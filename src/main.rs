@@ -16,6 +16,24 @@ struct Vanity {
     privkey_b58: String,
 }
 
+// Custom iterator to control the generation loop
+struct ConditionalIter {
+    found_atomic: Arc<AtomicUsize>,
+    target_count_val: usize,
+}
+
+impl Iterator for ConditionalIter {
+    type Item = (); // The item type doesn't matter, it's a signal for work
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.found_atomic.load(Ordering::Relaxed) >= self.target_count_val {
+            None // Stop iteration
+        } else {
+            Some(()) // More work potentially available
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().expect("Failed to load .env");
@@ -65,9 +83,16 @@ async fn main() {
     let found = Arc::new(AtomicUsize::new(0));
     let start = Instant::now();
 
-    (0..1_000_000_000usize)
-        .into_par_iter()
-        .for_each_with(tx.clone(), |tx, _| {
+    // Create the conditional iterator
+    let conditional_iter = ConditionalIter {
+        found_atomic: found.clone(),
+        target_count_val: target_count,
+    };
+
+    conditional_iter
+        .par_bridge()
+        .for_each_with(tx.clone(), |tx, _| { // The `_` here will be of type `()`
+            // This check ensures tasks stop if target is met while they are queued/starting
             if found.load(Ordering::Relaxed) >= target_count {
                 return;
             }
