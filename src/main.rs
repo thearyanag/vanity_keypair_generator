@@ -1,10 +1,9 @@
 use bs58;
 use deadpool_postgres::{Manager, Pool};
-use native_tls::{Certificate,TlsConnector};
+use native_tls::TlsConnector;
 use postgres_native_tls::MakeTlsConnector;
 use rayon::prelude::*;
 use solana_sdk::signature::{Keypair, Signer};
-use std::fs;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -19,9 +18,6 @@ struct Vanity {
 
 #[tokio::main]
 async fn main() {
-    let cert_data = fs::read("do-certificate.crt").expect("Failed to read CA file");
-    let cert = Certificate::from_pem(&cert_data).expect("Failed to parse PEM certificate");
-
     dotenvy::dotenv().expect("Failed to load .env");
     let db_url = std::env::var("DATABASE_URL").expect("DATABASE_URL not set");
 
@@ -30,9 +26,9 @@ async fn main() {
 
     let tls = MakeTlsConnector::new(
         TlsConnector::builder()
-            .add_root_certificate(cert)
+            .danger_accept_invalid_certs(true)
             .build()
-            .unwrap()
+            .expect("Failed to build TLS connector")
     );
 
     let mgr = Manager::new(db_url.parse().unwrap(), tls);
